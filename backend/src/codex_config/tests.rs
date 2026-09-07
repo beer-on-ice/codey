@@ -789,7 +789,7 @@ fn disabled_subagent_roles_are_omitted_from_runtime_registration_and_policy_inpu
     assert!(runtime_roles.contains_key(crate::config::SUBAGENT_ROLE_QUICK_SCAN));
     assert!(runtime_roles.contains_key(crate::config::SUBAGENT_ROLE_DEFAULT));
 
-    let plans = plan_runtime_agent_files(&constraints_dir, &runtime_roles, None).unwrap();
+    let plans = plan_runtime_agent_files(&constraints_dir, &runtime_roles, None, None).unwrap();
     assert_eq!(plans.len(), runtime_roles.len());
     assert!(
         plans
@@ -804,7 +804,7 @@ fn disabled_subagent_roles_are_omitted_from_runtime_registration_and_policy_inpu
     }
     fs::write(&stale_worker_path, b"stale worker runtime file").unwrap();
     let registrations =
-        prepare_runtime_agent_files(&constraints_dir, &runtime_roles, None).unwrap();
+        prepare_runtime_agent_files(&constraints_dir, &runtime_roles, None, None).unwrap();
     assert_eq!(registrations.len(), runtime_roles.len());
     assert!(!stale_worker_path.exists());
 }
@@ -848,8 +848,13 @@ fn runtime_read_only_agents_are_explicitly_told_not_to_call_write_tools() {
     let temp = tempfile::tempdir().unwrap();
     let constraints_dir = temp.path().join("codex-constraints");
     let roles = crate::config::default_subagent_roles();
-    let plans =
-        plan_runtime_agent_files(&constraints_dir, &roles, Some(CODEY_FASTCTX_GUIDANCE)).unwrap();
+    let plans = plan_runtime_agent_files(
+        &constraints_dir,
+        &roles,
+        Some(CODEY_FASTCTX_GUIDANCE),
+        None,
+    )
+    .unwrap();
 
     let quick_scan = plans
         .iter()
@@ -865,6 +870,49 @@ fn runtime_read_only_agents_are_explicitly_told_not_to_call_write_tools() {
         .unwrap();
     let worker = String::from_utf8(worker.contents.clone()).unwrap();
     assert!(!worker.contains(READ_ONLY_AGENT_WRITE_GUARD));
+}
+
+#[test]
+fn runtime_agent_provider_is_owned_by_the_active_router_mode() {
+    let source = r#"name = "codey_quick_scan"
+description = "Quick scan"
+model = "stale-model"
+model_provider = "subagent"
+model_reasoning_effort = "low"
+"#;
+    let selection = SubagentRoleConfig::new("route-a/gpt-5.6-luna", "high");
+
+    let (routed, _) = render_runtime_agent(
+        source,
+        crate::config::SUBAGENT_ROLE_QUICK_SCAN,
+        &selection,
+        None,
+        Some(local_router::ROUTER_PROVIDER_ID),
+    )
+    .unwrap();
+    let routed = String::from_utf8(routed)
+        .unwrap()
+        .parse::<DocumentMut>()
+        .unwrap();
+    assert_eq!(routed["model"].as_str(), Some("route-a/gpt-5.6-luna"));
+    assert_eq!(
+        routed["model_provider"].as_str(),
+        Some(local_router::ROUTER_PROVIDER_ID)
+    );
+
+    let (native, _) = render_runtime_agent(
+        source,
+        crate::config::SUBAGENT_ROLE_QUICK_SCAN,
+        &selection,
+        None,
+        None,
+    )
+    .unwrap();
+    let native = String::from_utf8(native)
+        .unwrap()
+        .parse::<DocumentMut>()
+        .unwrap();
+    assert!(native.get("model_provider").is_none());
 }
 
 #[test]
@@ -2918,6 +2966,10 @@ wire_api = "responses"
             .unwrap();
         assert_eq!(runtime["name"].as_str(), Some(role));
         assert_eq!(runtime["model"].as_str(), Some("gpt-5.6-mini"));
+        assert_eq!(
+            runtime["model_provider"].as_str(),
+            Some(local_router::ROUTER_PROVIDER_ID)
+        );
         assert_eq!(runtime["model_reasoning_effort"].as_str(), Some("high"));
     }
 

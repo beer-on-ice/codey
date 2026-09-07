@@ -72,7 +72,7 @@ const CODEY_HOOKS_DESCRIPTION: &str = "Codey runtime routing and coordination ho
 const CODEY_RUNTIME_CONFIG_LOCK_FILE: &str = "codex-runtime-config.lock";
 const RUNTIME_CONFIG_LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 const RUNTIME_CONFIG_LOCK_RETRY: Duration = Duration::from_millis(10);
-const RUNTIME_AGENT_SCHEMA_VERSION: u32 = 1;
+const RUNTIME_AGENT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -454,6 +454,7 @@ fn apply_isolated_runtime_router_config(
             &constraints_dir,
             &runtime_roles,
             fastctx_instructions.as_deref(),
+            local_router.map(|_| local_router::ROUTER_PROVIDER_ID),
         )?;
         (
             Some(root_instructions),
@@ -679,8 +680,14 @@ fn prepare_runtime_agent_files(
     constraints_dir: &Path,
     roles: &BTreeMap<String, SubagentRoleConfig>,
     fastctx_instructions: Option<&str>,
+    provider_id: Option<&str>,
 ) -> Result<Vec<RuntimeAgentRegistration>> {
-    let plans = plan_runtime_agent_files(constraints_dir, roles, fastctx_instructions)?;
+    let plans = plan_runtime_agent_files(
+        constraints_dir,
+        roles,
+        fastctx_instructions,
+        provider_id,
+    )?;
     let mut registrations = Vec::with_capacity(plans.len());
     for plan in plans {
         if let Some(parent) = plan.registration.config_file.parent() {
@@ -726,6 +733,7 @@ fn plan_runtime_agent_files(
     constraints_dir: &Path,
     roles: &BTreeMap<String, SubagentRoleConfig>,
     fastctx_instructions: Option<&str>,
+    provider_id: Option<&str>,
 ) -> Result<Vec<RuntimeAgentPlan>> {
     let mut plans = Vec::with_capacity(roles.len());
     for role in SUBAGENT_ROLE_IDS {
@@ -746,8 +754,13 @@ fn plan_runtime_agent_files(
         }
         let source = read_or_create_constraint_file(&source_path, default_source)?;
         let runtime_path = runtime_agent_path(constraints_dir, role);
-        let (contents, description) =
-            render_runtime_agent(&source, role, selection, fastctx_instructions)?;
+        let (contents, description) = render_runtime_agent(
+            &source,
+            role,
+            selection,
+            fastctx_instructions,
+            provider_id,
+        )?;
         let content_sha256 = crate::fs_util::sha256_hex(&contents);
         plans.push(RuntimeAgentPlan {
             registration: RuntimeAgentRegistration {
@@ -777,6 +790,7 @@ fn render_runtime_agent(
     role: &str,
     selection: &SubagentRoleConfig,
     fastctx_instructions: Option<&str>,
+    provider_id: Option<&str>,
 ) -> Result<(Vec<u8>, String)> {
     let mut document = parse_document(source).context("解析 Codey 子代理约束文件失败")?;
     let model = selection.model.trim();
@@ -816,6 +830,11 @@ fn render_runtime_agent(
     }
     document["name"] = value(role);
     document["model"] = value(model);
+    if let Some(provider_id) = provider_id {
+        document["model_provider"] = value(provider_id);
+    } else {
+        document.as_table_mut().remove("model_provider");
+    }
     document["model_reasoning_effort"] = value(&reasoning_effort);
     let rendered = document_string(&document)?;
     Ok((rendered.into_bytes(), description))
@@ -1061,6 +1080,9 @@ fn reconcile_runtime_subagent_roles_at(
         &constraints_dir,
         &runtime_roles,
         fastctx_instructions.as_deref(),
+        state
+            .local_router_applied
+            .then_some(local_router::ROUTER_PROVIDER_ID),
     )
     .context("预检 Codey 子代理运行时配置失败；未写入运行时配置")?;
     let expected_hashes = runtime_agent_plan_hashes(&plans);

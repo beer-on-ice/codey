@@ -41,6 +41,9 @@ pub(super) fn refresh_runtime_subagent_roles_at(config: &CodeyConfig, marker: &P
         &constraints_dir,
         &runtime_roles,
         fastctx_instructions.as_deref(),
+        state
+            .local_router_applied
+            .then_some(local_router::ROUTER_PROVIDER_ID),
     )
     .context("预检 Codey 子代理运行时配置失败；未写入运行时配置")?;
     let expected_hashes = runtime_agent_plan_hashes(&plans);
@@ -67,6 +70,9 @@ pub(super) fn refresh_runtime_subagent_roles_at(config: &CodeyConfig, marker: &P
             &constraints_dir,
             &runtime_roles,
             fastctx_instructions.as_deref(),
+            state
+                .local_router_applied
+                .then_some(local_router::ROUTER_PROVIDER_ID),
         )?;
         verify_runtime_agent_files(&registrations, runtime_roles.len())?;
         state.subagent_model.clone_from(&config.subagent_model);
