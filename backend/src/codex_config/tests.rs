@@ -848,13 +848,9 @@ fn runtime_read_only_agents_are_explicitly_told_not_to_call_write_tools() {
     let temp = tempfile::tempdir().unwrap();
     let constraints_dir = temp.path().join("codex-constraints");
     let roles = crate::config::default_subagent_roles();
-    let plans = plan_runtime_agent_files(
-        &constraints_dir,
-        &roles,
-        Some(CODEY_FASTCTX_GUIDANCE),
-        None,
-    )
-    .unwrap();
+    let plans =
+        plan_runtime_agent_files(&constraints_dir, &roles, Some(CODEY_FASTCTX_GUIDANCE), None)
+            .unwrap();
 
     let quick_scan = plans
         .iter()

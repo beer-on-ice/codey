@@ -682,12 +682,8 @@ fn prepare_runtime_agent_files(
     fastctx_instructions: Option<&str>,
     provider_id: Option<&str>,
 ) -> Result<Vec<RuntimeAgentRegistration>> {
-    let plans = plan_runtime_agent_files(
-        constraints_dir,
-        roles,
-        fastctx_instructions,
-        provider_id,
-    )?;
+    let plans =
+        plan_runtime_agent_files(constraints_dir, roles, fastctx_instructions, provider_id)?;
     let mut registrations = Vec::with_capacity(plans.len());
     for plan in plans {
         if let Some(parent) = plan.registration.config_file.parent() {
@@ -754,13 +750,8 @@ fn plan_runtime_agent_files(
         }
         let source = read_or_create_constraint_file(&source_path, default_source)?;
         let runtime_path = runtime_agent_path(constraints_dir, role);
-        let (contents, description) = render_runtime_agent(
-            &source,
-            role,
-            selection,
-            fastctx_instructions,
-            provider_id,
-        )?;
+        let (contents, description) =
+            render_runtime_agent(&source, role, selection, fastctx_instructions, provider_id)?;
         let content_sha256 = crate::fs_util::sha256_hex(&contents);
         plans.push(RuntimeAgentPlan {
             registration: RuntimeAgentRegistration {
